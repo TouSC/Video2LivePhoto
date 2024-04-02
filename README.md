@@ -7,14 +7,14 @@ If you find this project helpful, consider buying me a coffee! ☕️
 
 ### PayPal
 
-![PayPal](http://47.76.142.4/media/paypal.JPG)
+<img width="180" src="http://47.76.142.4/media/paypal.JPG">
 
-### WeChat Pay
+### 微信
 
-![WeChat Pay](http://47.76.142.4/media/wechat.JPG)
+<img width="180" src="http://47.76.142.4/media/wechat.JPG">
 
-### Alipay
+### 支付宝
 
-![Alipay](http://47.76.142.4/media/alipay.JPG)
+<img width="180" src="http://47.76.142.4/media/alipay.JPG">
 
 Thank you for your support!
