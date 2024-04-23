@@ -12,66 +12,82 @@
     
     NSURL *metaURL = [NSBundle.mainBundle URLForResource:@"metadata" withExtension:@"mov"];
     CGSize livePhotoSize = CGSizeMake(1080, 1920);
-    CMTime livePhotoDuration = CMTimeMake(630, 600);
+    CMTime livePhotoDuration = CMTimeMake(550, 600);
     NSString *assetIdentifier = NSUUID.UUID.UUIDString;
     
-    NSString *acceleratePath = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject stringByAppendingString:@"/accelerate.mp4"];
-    NSString *resizePath = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject stringByAppendingString:@"/resize.mp4"];
-    NSString *finalPath = resizePath;
+    NSString *documentPath = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject;
+    NSString *durationPath = [documentPath stringByAppendingString:@"/duration.mp4"];
+    NSString *acceleratePath = [documentPath stringByAppendingString:@"/accelerate.mp4"];
+    NSString *resizePath = [documentPath stringByAppendingString:@"/resize.mp4"];
+    [NSFileManager.defaultManager removeItemAtPath:durationPath error:nil];
     [NSFileManager.defaultManager removeItemAtPath:acceleratePath error:nil];
     [NSFileManager.defaultManager removeItemAtPath:resizePath error:nil];
+    NSString *finalPath = resizePath;
 
-    [Converter4Video accelerateVideoAt:path to:livePhotoDuration outputPath:acceleratePath completion:^(BOOL success, NSError * error) {
-        if (!success) {
-            NSLog(@"accelerate failed: %@", error);
-            complete(NO, error.localizedDescription);
-            return;
-        }
-        [Converter4Video resizeVideoAt:acceleratePath outputPath:resizePath outputSize:livePhotoSize completion:^(BOOL success, NSError * error) {
-            if (!success) {
-                NSLog(@"resize failed: %@", error);
-                complete(NO, error.localizedDescription);
-                return;
-            }
-            AVURLAsset *asset = [AVURLAsset URLAssetWithURL:[NSURL fileURLWithPath:finalPath] options:nil];
-            AVAssetImageGenerator *generator = [AVAssetImageGenerator assetImageGeneratorWithAsset:asset];
-            generator.appliesPreferredTrackTransform = YES;
-            generator.requestedTimeToleranceAfter = kCMTimeZero;
-            generator.requestedTimeToleranceBefore = kCMTimeZero;
-            CMTime time = CMTimeMakeWithSeconds(0, asset.duration.timescale);
-            [generator generateCGImagesAsynchronouslyForTimes:[NSArray arrayWithObject:[NSValue valueWithCMTime:time]] completionHandler:^(CMTime requestedTime, CGImageRef  _Nullable image, CMTime actualTime, AVAssetImageGeneratorResult result, NSError * _Nullable error) {
-                if (image)
-                {
-                    NSString *picturePath = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject stringByAppendingFormat:@"/%@.heic", @"live", nil];
-                    NSString *videoPath = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject stringByAppendingFormat:@"/%@.mov", @"live", nil];
-                    [NSFileManager.defaultManager removeItemAtPath:picturePath error:nil];
-                    [NSFileManager.defaultManager removeItemAtPath:videoPath error:nil];
-                    
-                    Converter4Image *converter4Image = [[Converter4Image alloc] initWithImage:[UIImage imageWithCGImage:image]];
-                    [converter4Image writeWithDest:picturePath assetIdentifier:assetIdentifier];
-                    
-                    Converter4Video *coverter4Video = [[Converter4Video alloc] initWithPath:finalPath];
-                    [coverter4Video writeWithDest:videoPath assetIdentifier:assetIdentifier metaURL:metaURL completion:^(BOOL success, NSError * error) {
-                        if (!success) {
-                            NSLog(@"merge failed: %@", error);
-                            complete(NO, error.localizedDescription);
-                            return;
-                        }
-                        [PHPhotoLibrary.sharedPhotoLibrary performChanges:^{
-                            PHAssetCreationRequest *request = [PHAssetCreationRequest creationRequestForAsset];
-                            NSURL *photoURL = [NSURL fileURLWithPath:picturePath];
-                            NSURL *pairedVideoURL = [NSURL fileURLWithPath:videoPath];
-                            [request addResourceWithType:PHAssetResourceTypePhoto fileURL:photoURL options:[PHAssetResourceCreationOptions new]];
-                            [request addResourceWithType:PHAssetResourceTypePairedVideo fileURL:pairedVideoURL options:[PHAssetResourceCreationOptions new]];
-                        } completionHandler:^(BOOL success, NSError * _Nullable error) {
-                            dispatch_async(dispatch_get_main_queue(), ^{
-                                complete(error==nil, error.localizedDescription);
-                            });
-                        }];
-                    }];
+    Converter4Video *converter = [[Converter4Video alloc] initWithPath:finalPath];
+    
+    [converter durationVideoAt:path outputPath:durationPath targetDuration:3 completion:^(BOOL success, NSError * error) {
+    
+    [converter accelerateVideoAt:durationPath to:livePhotoDuration outputPath:acceleratePath completion:^(BOOL success, NSError * error) {
+        
+    [converter resizeVideoAt:acceleratePath outputPath:resizePath outputSize:livePhotoSize completion:^(BOOL success, NSError * error) {
+        
+    AVURLAsset *asset = [AVURLAsset URLAssetWithURL:[NSURL fileURLWithPath:finalPath] options:nil];
+    AVAssetImageGenerator *generator = [AVAssetImageGenerator assetImageGeneratorWithAsset:asset];
+    generator.appliesPreferredTrackTransform = YES;
+    generator.requestedTimeToleranceAfter = kCMTimeZero;
+    generator.requestedTimeToleranceBefore = kCMTimeZero;
+        NSMutableArray *times = @[].mutableCopy;
+//        for (int i=0; i<10; i++) {
+//            if (i!=5) {
+//                continue;
+//            }
+            CMTime time = CMTimeMakeWithSeconds(0.5, asset.duration.timescale);
+            [times addObject:[NSValue valueWithCMTime:time]];
+//        }
+        dispatch_queue_t q = dispatch_queue_create("image", DISPATCH_QUEUE_SERIAL);
+        __block int index = 0;
+    [generator generateCGImagesAsynchronouslyForTimes:times completionHandler:^(CMTime requestedTime, CGImageRef  _Nullable image, CMTime actualTime, AVAssetImageGeneratorResult result, NSError * _Nullable error) {
+        if (image)
+        {
+            NSString *picturePath = [documentPath stringByAppendingFormat:@"/%@%d.heic", @"live", index, nil];
+            NSString *videoPath = [documentPath stringByAppendingFormat:@"/%@%d.mov", @"live", index, nil];
+            index += 1;
+            [NSFileManager.defaultManager removeItemAtPath:picturePath error:nil];
+            [NSFileManager.defaultManager removeItemAtPath:videoPath error:nil];
+            
+            Converter4Image *converter4Image = [[Converter4Image alloc] initWithImage:[UIImage imageWithCGImage:image]];
+            dispatch_async(q, ^{
+            [converter4Image writeWithDest:picturePath assetIdentifier:assetIdentifier];
+            
+            [converter writeWithDest:videoPath assetIdentifier:assetIdentifier metaURL:metaURL completion:^(BOOL success, NSError * error) {
+                if (!success) {
+                    NSLog(@"merge failed: %@", error);
+                    complete(NO, error.localizedDescription);
+                    return;
                 }
+                [PHPhotoLibrary.sharedPhotoLibrary performChanges:^{
+                    PHAssetCreationRequest *request = [PHAssetCreationRequest creationRequestForAsset];
+                    NSURL *photoURL = [NSURL fileURLWithPath:picturePath];
+                    NSURL *pairedVideoURL = [NSURL fileURLWithPath:videoPath];
+                    [request addResourceWithType:PHAssetResourceTypePhoto fileURL:photoURL options:[PHAssetResourceCreationOptions new]];
+                    [request addResourceWithType:PHAssetResourceTypePairedVideo fileURL:pairedVideoURL options:[PHAssetResourceCreationOptions new]];
+                } completionHandler:^(BOOL success, NSError * _Nullable error) {
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        complete(error==nil, error.localizedDescription);
+                    });
+                }];
             }];
-        }];
+            });
+        }
+            
+        
+    }];
+        
+    }];
+            
+    }];
+
     }];
 }
 
